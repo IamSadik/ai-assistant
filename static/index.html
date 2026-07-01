@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>AI Assistant</title>
+	<style>
+		:root {
+			--bg: #f4f4f2;
+			--panel: #ffffff;
+			--line: #dedcd7;
+			--text: #1f2328;
+			--muted: #6f737a;
+			--accent: #1f2328;
+			--shadow: 0 8px 24px rgba(31, 35, 40, 0.08);
+		}
+
+		* {
+			box-sizing: border-box;
+		}
+
+		html, body {
+			margin: 0;
+			min-height: 100%;
+			background: var(--bg);
+			color: var(--text);
+			font-family: Arial, Helvetica, sans-serif;
+		}
+
+		.shell {
+			max-width: 920px;
+			margin: 0 auto;
+			padding: 24px 16px;
+		}
+
+		.header {
+			margin-bottom: 14px;
+		}
+
+		.header h1 {
+			margin: 0 0 6px;
+			font-size: 24px;
+			font-weight: 700;
+		}
+
+		.header p {
+			margin: 0;
+			color: var(--muted);
+			font-size: 14px;
+			line-height: 1.5;
+		}
+
+		.panel {
+			background: var(--panel);
+			border: 1px solid var(--line);
+			border-radius: 16px;
+			box-shadow: var(--shadow);
+			overflow: hidden;
+		}
+
+		.meta {
+			display: flex;
+			flex-wrap: wrap;
+			justify-content: space-between;
+			gap: 8px 12px;
+			padding: 12px 14px;
+			border-bottom: 1px solid var(--line);
+			font-size: 13px;
+			color: var(--muted);
+		}
+
+		.meta strong {
+			color: var(--text);
+			font-weight: 600;
+		}
+
+		.messages {
+			padding: 16px;
+			overflow: auto;
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+			min-height: 56vh;
+		}
+
+		.message {
+			max-width: 78%;
+			padding: 12px 14px;
+			border-radius: 14px;
+			border: 1px solid var(--line);
+			background: #fff;
+			white-space: pre-wrap;
+			line-height: 1.55;
+		}
+
+		.message.user {
+			align-self: flex-end;
+			background: #f6f6f4;
+		}
+
+		.message.assistant {
+			align-self: flex-start;
+		}
+
+		.label {
+			display: block;
+			margin-bottom: 6px;
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.08em;
+			color: var(--muted);
+		}
+
+		.sources {
+			margin-top: 10px;
+			padding-top: 10px;
+			border-top: 1px solid var(--line);
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.controls {
+			display: grid;
+			gap: 10px;
+			padding: 14px;
+			border-top: 1px solid var(--line);
+			background: #fafaf8;
+		}
+
+		.controls-row {
+			display: grid;
+			grid-template-columns: 1fr auto auto;
+			gap: 10px;
+			align-items: center;
+		}
+
+		.controls-row.secondary {
+			grid-template-columns: auto auto 1fr auto;
+		}
+
+		input[type="file"],
+		textarea {
+			width: 100%;
+			border: 1px solid var(--line);
+			background: #fff;
+			color: var(--text);
+			border-radius: 12px;
+			padding: 11px 12px;
+			font: inherit;
+		}
+
+		textarea {
+			resize: vertical;
+			min-height: 52px;
+			max-height: 120px;
+		}
+
+		button {
+			border: 1px solid var(--line);
+			background: #fff;
+			color: var(--text);
+			border-radius: 12px;
+			padding: 11px 14px;
+			font: inherit;
+			cursor: pointer;
+		}
+
+		button:hover {
+			background: #f1f1ef;
+		}
+
+		.primary {
+			background: var(--accent);
+			color: #fff;
+			border-color: var(--accent);
+		}
+
+		.primary:hover {
+			background: #000;
+		}
+
+		.small,
+		.hint,
+		.footer-note {
+			color: var(--muted);
+			font-size: 12px;
+		}
+
+		.footer-note {
+			line-height: 1.4;
+		}
+
+		.composer {
+			padding: 14px;
+			border-top: 1px solid var(--line);
+			background: #fff;
+		}
+
+		.composer form {
+			display: grid;
+			gap: 10px;
+		}
+
+		@media (max-width: 720px) {
+			.shell {
+				padding: 14px 10px;
+			}
+
+			.controls-row,
+			.controls-row.secondary {
+				grid-template-columns: 1fr;
+			}
+
+			.message {
+				max-width: 92%;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="shell">
+		<header class="header">
+			<h1>AI Assistant</h1>
+			<p>Upload a document, ask a question, or check an order and product. Session memory stays available while the server is running.</p>
+		</header>
+
+		<section class="panel">
+			<div class="meta">
+				<div>Provider: <strong id="provider-value">-</strong></div>
+				<div>Model: <strong id="model-value">-</strong></div>
+				<div>Knowledge base: <strong id="kb-value">-</strong></div>
+				<div>Session: <strong id="session-value">-</strong></div>
+			</div>
+
+			<div class="messages" id="messages"></div>
+
+			<div class="controls">
+				<div class="controls-row">
+					<input id="file-input" type="file" accept=".pdf,.txt,.md" />
+					<button class="primary" id="upload-btn" type="button">Upload</button>
+					<button id="clear-kb-btn" type="button">Clear</button>
+				</div>
+				<div class="footer-note" id="upload-status">No file selected.</div>
+				<div class="controls-row secondary">
+					<button id="new-session-btn" type="button">New session</button>
+					<button id="reset-session-btn" type="button">Reset</button>
+					<div class="small">Current session: <span id="session-display"></span></div>
+					<div class="small" id="chat-note">Ready.</div>
+				</div>
+			</div>
+
+			<div class="composer">
+				<form id="chat-form">
+					<textarea id="message-input" placeholder="Message the assistant..."></textarea>
+					<div class="controls-row">
+						<button class="primary" type="submit">Send</button>
+						<button id="seed-message-btn" type="button">Example</button>
+						<div class="hint">Try: Where is my order ORD001?</div>
+					</div>
+				</form>
+			</div>
+		</section>
+	</main>
+
+	<script>
+		const sessionKey = "ai-assistant-session-id";
+		const messageList = document.getElementById("messages");
+		const sessionDisplay = document.getElementById("session-display");
+		const sessionValue = document.getElementById("session-value");
+		const providerValue = document.getElementById("provider-value");
+		const modelValue = document.getElementById("model-value");
+		const kbValue = document.getElementById("kb-value");
+		const uploadStatus = document.getElementById("upload-status");
+		const chatNote = document.getElementById("chat-note");
+		const fileInput = document.getElementById("file-input");
+		const messageInput = document.getElementById("message-input");
+
+		function makeSessionId() {
+			if (window.crypto && crypto.randomUUID) {
+				return crypto.randomUUID();
+			}
+			return `session-${Math.random().toString(16).slice(2)}-${Date.now()}`;
+		}
+
+		function getSessionId() {
+			let sessionId = localStorage.getItem(sessionKey);
+			if (!sessionId) {
+				sessionId = makeSessionId();
+				localStorage.setItem(sessionKey, sessionId);
+			}
+			return sessionId;
+		}
+
+		function setSessionId(sessionId) {
+			localStorage.setItem(sessionKey, sessionId);
+			renderSession();
+		}
+
+		function renderSession() {
+			const sessionId = getSessionId();
+			sessionDisplay.textContent = sessionId;
+			sessionValue.textContent = sessionId.slice(0, 8) + "...";
+		}
+
+		function appendMessage(role, text, sources = []) {
+			const bubble = document.createElement("div");
+			bubble.className = `message ${role}`;
+			const label = document.createElement("span");
+			label.className = "label";
+			label.textContent = role === "user" ? "You" : "Assistant";
+			const body = document.createElement("div");
+			body.textContent = text;
+			bubble.append(label, body);
+
+			if (sources.length) {
+				const sourceBox = document.createElement("div");
+				sourceBox.className = "sources";
+				sourceBox.textContent = "Sources: " + sources.map((item) => `${item.source} #${item.chunk_id} (${item.score})`).join(" | ");
+				bubble.appendChild(sourceBox);
+			}
+
+			messageList.appendChild(bubble);
+			messageList.scrollTop = messageList.scrollHeight;
+		}
+
+		async function readResponseBody(response) {
+			const contentType = response.headers.get("content-type") || "";
+			const rawText = await response.text();
+
+			if (contentType.includes("application/json")) {
+				try {
+					return rawText ? JSON.parse(rawText) : null;
+				} catch (error) {
+					return { detail: rawText || "Invalid JSON response." };
+				}
+			}
+
+			try {
+				return rawText ? JSON.parse(rawText) : null;
+			} catch (error) {
+				return { detail: rawText || "Unexpected empty response." };
+			}
+		}
+
+		async function loadHealth() {
+			try {
+				const response = await fetch("/health");
+				const data = await readResponseBody(response);
+				providerValue.textContent = data.llm?.effective_provider || "-";
+				modelValue.textContent = data.llm?.model || "-";
+				kbValue.textContent = `${data.knowledge_base?.total_chunks ?? 0} chunks`;
+				if (data.llm?.gemini_key_hint) {
+					chatNote.textContent = data.llm.gemini_key_hint;
+				} else if (data.llm?.last_error) {
+					chatNote.textContent = data.llm.last_error;
+				}
+			} catch (error) {
+				providerValue.textContent = "offline";
+				modelValue.textContent = "-";
+				kbValue.textContent = "-";
+			}
+		}
+
+		async function ingestSelectedFile() {
+			const file = fileInput.files?.[0];
+			if (!file) {
+				uploadStatus.textContent = "Select a PDF, TXT, or Markdown file first.";
+				return;
+			}
+
+			uploadStatus.textContent = `Uploading ${file.name}...`;
+			chatNote.textContent = "Uploading...";
+
+			const formData = new FormData();
+			formData.append("file", file);
+
+			try {
+				const response = await fetch("/ingest", { method: "POST", body: formData });
+				const data = await readResponseBody(response);
+				if (!response.ok) {
+					throw new Error(data.detail || "Upload failed");
+				}
+
+				uploadStatus.textContent = `${data.message} (${data.chunks_created} chunks)`;
+				chatNote.textContent = "Document ready.";
+				await loadHealth();
+			} catch (error) {
+				uploadStatus.textContent = error.message || "Upload failed.";
+				chatNote.textContent = "Ingestion failed.";
+			}
+		}
+
+		async function sendMessage(message) {
+			const sessionId = getSessionId();
+			appendMessage("user", message);
+			chatNote.textContent = "Thinking...";
+
+			try {
+				const response = await fetch("/chat", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ session_id: sessionId, message }),
+				});
+				const data = await readResponseBody(response);
+
+				if (!response.ok) {
+					throw new Error(data.detail || "Chat request failed");
+				}
+
+				appendMessage("assistant", data.reply, data.sources || []);
+				if (data.llm_degraded) {
+					chatNote.textContent = "LLM unavailable — used structured fallback. " + (data.llm_error || "");
+				} else {
+					chatNote.textContent = data.used_tool ? `Tool used: ${data.used_tool}` : (data.used_retrieval ? "Answered with retrieval." : "Answered.");
+				}
+				await loadHealth();
+			} catch (error) {
+				appendMessage("assistant", error.message || "Something went wrong.");
+				chatNote.textContent = "Request failed.";
+			}
+		}
+
+		document.getElementById("upload-btn").addEventListener("click", ingestSelectedFile);
+		document.getElementById("clear-kb-btn").addEventListener("click", () => {
+			fileInput.value = "";
+			uploadStatus.textContent = "Selection cleared.";
+		});
+		document.getElementById("chat-form").addEventListener("submit", async (event) => {
+			event.preventDefault();
+			const message = messageInput.value.trim();
+			if (!message) {
+				return;
+			}
+
+			messageInput.value = "";
+			await sendMessage(message);
+		});
+
+		document.getElementById("new-session-btn").addEventListener("click", () => {
+			setSessionId(makeSessionId());
+			messageList.innerHTML = "";
+			appendMessage("assistant", "New session created. Start by uploading a document or asking a question.");
+			chatNote.textContent = "New session ready.";
+		});
+
+		document.getElementById("reset-session-btn").addEventListener("click", async () => {
+			const sessionId = getSessionId();
+			try {
+				const response = await fetch(`/reset/${encodeURIComponent(sessionId)}`, { method: "POST" });
+				const data = await readResponseBody(response);
+				messageList.innerHTML = "";
+				appendMessage("assistant", data.message || "Session reset.");
+				chatNote.textContent = "Session reset.";
+			} catch (error) {
+				appendMessage("assistant", error.message || "Reset failed.");
+			}
+		});
+
+		document.getElementById("seed-message-btn").addEventListener("click", () => {
+			messageInput.value = "Where is my order ORD001?";
+			messageInput.focus();
+		});
+
+		renderSession();
+		appendMessage("assistant", "Upload a document, then ask me something about it. I can also look up order IDs and products.");
+		loadHealth();
+	</script>
+</body>
+</html>

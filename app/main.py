@@ -63,7 +63,7 @@ def root():
 def health():
     return {
         "status": "ok",
-        "llm_mode": "openai" if settings.OPENAI_API_KEY else "rule_based_fallback",
+        "llm": llm.get_runtime_status(),
         "knowledge_base": ingestion.collection_stats(),
         "active_sessions": len(memory.list_sessions()),
     }
@@ -139,6 +139,8 @@ def chat(request: ChatRequest):
         used_tool=result.get("used_tool"),
         used_retrieval=result.get("used_retrieval", False),
         sources=[SourceChunk(**s) for s in result.get("sources", [])],
+        llm_degraded=result.get("llm_degraded", False),
+        llm_error=result.get("llm_error"),
     )
 
 

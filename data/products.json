@@ -4,6 +4,16 @@
   { "name": "USB-C Hub",           "price": 35, "stock": 0  },
   { "name": "Laptop Stand",        "price": 40, "stock": 20 },
   { "name": "27-inch Monitor",     "price": 220, "stock": 8 },
-  { "name": "Budget Laptop",       "price": 450, "stock": 15 },
-  { "name": "Gaming Laptop",       "price": 1300, "stock": 3 }
+  { "name": "Laptop",              "price": 450, "stock": 15 },
+  { "name": "Gaming Laptop",       "price": 1300, "stock": 3 },
+  { "name": "External Hard Drive", "price": 80, "stock": 10 },
+  { "name": "Webcam",              "price": 60, "stock": 7  },
+  { "name": "Bluetooth Speaker",   "price": 50, "stock": 0  },
+  {"name": "Used Laptop", "price": 300, "stock": 4 },
+  {"name": "Refurbished Monitor", "price": 150, "stock": 6 },
+  {"name": "Used Mechanical Keyboard", "price": 40, "stock": 2 },
+  {"name": "Pre-owned Gaming Mouse", "price": 20, "stock": 5 },
+  {"name": "Workstation Laptop", "price": 900, "stock": 1 },
+  {"name": "Ultra Gaming Laptop", "price": 2000, "stock": 0 }
+
 ]

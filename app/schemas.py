@@ -23,6 +23,8 @@ class ChatResponse(BaseModel):
     used_tool: Optional[str] = None
     used_retrieval: bool = False
     sources: List[SourceChunk] = []
+    llm_degraded: bool = False
+    llm_error: Optional[str] = None
 
 
 class IngestResponse(BaseModel):

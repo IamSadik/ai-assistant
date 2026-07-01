@@ -90,28 +90,34 @@ def load_document(file_path: str) -> str:
 # ---------------------------------------------------------------------------
 # Step 2: Chunk
 # ---------------------------------------------------------------------------
-def chunk_text(
-    text: str,
-    chunk_size: int = None,
-    overlap: int = None,
-) -> List[str]:
-    """
-    Split text into overlapping fixed-size chunks.
+def _split_markdown_sections(text: str) -> List[str]:
+    """Split markdown on ## headings so each chunk stays topic-coherent."""
+    import re
 
-    Whitespace is normalized first. Chunks shorter than 20 chars after
-    stripping (e.g. trailing whitespace-only tail chunks) are dropped.
-    """
-    chunk_size = chunk_size or settings.CHUNK_SIZE
-    overlap = overlap or settings.CHUNK_OVERLAP
+    stripped = text.strip()
+    stripped = re.sub(r"^#\s+[^\n]+\n*", "", stripped, count=1).strip()
 
-    # Normalize whitespace so page breaks / repeated newlines from PDFs
-    # don't inflate chunk boundaries with junk.
+    parts = re.split(r"(?m)^##\s+", stripped)
+    sections: List[str] = []
+    for i, part in enumerate(parts):
+        part = part.strip()
+        if not part:
+            continue
+        if i == 0 and not part.startswith("#"):
+            if len(part.strip()) >= 20:
+                sections.append(part)
+            continue
+        sections.append(f"## {part}")
+    return sections
+
+
+def _chunk_fixed(text: str, chunk_size: int, overlap: int) -> List[str]:
+    """Fixed-size overlapping chunks on normalized text."""
     normalized = " ".join(text.split())
-
     if not normalized:
         return []
 
-    chunks = []
+    chunks: List[str] = []
     start = 0
     text_len = len(normalized)
 
@@ -120,12 +126,44 @@ def chunk_text(
         chunk = normalized[start:end].strip()
         if len(chunk) >= 20:
             chunks.append(chunk)
-
         if end >= text_len:
             break
-        start = end - overlap  # step forward, but re-cover the overlap window
+        start = end - overlap
 
     return chunks
+
+
+def chunk_text(
+    text: str,
+    chunk_size: int = None,
+    overlap: int = None,
+) -> List[str]:
+    """
+    Split text into chunks for embedding.
+
+    For markdown, split on ## section headings first so each chunk covers
+    one policy/topic (Return Policy, Loyalty Program, etc.). Sections
+    longer than chunk_size are further split with overlap. Other formats
+    use fixed-size character chunking only.
+    """
+    chunk_size = chunk_size or settings.CHUNK_SIZE
+    overlap = overlap or settings.CHUNK_OVERLAP
+
+    if not text or not text.strip():
+        return []
+
+    if "## " in text:
+        chunks: List[str] = []
+        for section in _split_markdown_sections(text):
+            if len(section) <= chunk_size:
+                if len(section.strip()) >= 20:
+                    chunks.append(section.strip())
+            else:
+                chunks.extend(_chunk_fixed(section, chunk_size, overlap))
+        if chunks:
+            return chunks
+
+    return _chunk_fixed(text, chunk_size, overlap)
 
 
 # ---------------------------------------------------------------------------

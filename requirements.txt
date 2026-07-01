@@ -13,4 +13,4 @@ pypdf
 
 # LLM
 ollama
-google-generativeai
+google-genai
