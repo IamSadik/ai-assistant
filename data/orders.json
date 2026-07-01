@@ -1,0 +1,6 @@
+[
+  { "order_id": "ORD001", "status": "Shipped",    "estimated_delivery": "2026-07-02" },
+  { "order_id": "ORD002", "status": "Processing", "estimated_delivery": "2026-07-05" },
+  { "order_id": "ORD003", "status": "Delivered",  "estimated_delivery": "2026-06-28" },
+  { "order_id": "ORD004", "status": "Cancelled",  "estimated_delivery": null }
+]

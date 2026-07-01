@@ -1,0 +1,9 @@
+[
+  { "name": "Wireless Mouse",      "price": 25, "stock": 12 },
+  { "name": "Mechanical Keyboard", "price": 70, "stock": 5  },
+  { "name": "USB-C Hub",           "price": 35, "stock": 0  },
+  { "name": "Laptop Stand",        "price": 40, "stock": 20 },
+  { "name": "27-inch Monitor",     "price": 220, "stock": 8 },
+  { "name": "Budget Laptop",       "price": 450, "stock": 15 },
+  { "name": "Gaming Laptop",       "price": 1300, "stock": 3 }
+]
