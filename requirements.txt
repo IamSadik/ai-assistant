@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+python-dotenv
+
+# Vector DB + embeddings
+chromadb
+sentence-transformers
+
+# Document loading
+pypdf
+
+# LLM
+ollama
+google-generativeai
