@@ -328,7 +328,7 @@ def search_products_cheaper_than(max_price: float, category_hint: Optional[str] 
 
 
 # ---------------------------------------------------------------------------
-# OpenAI function-calling schemas
+# function-calling schemas
 # ---------------------------------------------------------------------------
 TOOL_SCHEMAS = [
     {

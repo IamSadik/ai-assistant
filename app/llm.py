@@ -90,14 +90,6 @@ _DOCUMENT_INTENT_PHRASES = (
     "explain",
     "summarize",
     "summary of",
-    "privacy",
-    "policy",
-    "loyalty",
-    "company history",
-    "support hours",
-    "shipping",
-    "return policy",
-    "warranty",
     "what about",
     "how about",
 )
@@ -229,6 +221,21 @@ def _looks_like_product_request(text: str, history: list[dict]) -> bool:
     return False
 
 
+def _looks_like_name_intro(text: str) -> bool:
+    """
+    Name capture should run only for explicit self-introductions.
+    Prevents misfires like: "it is in the uploaded file pdf".
+    """
+    t = text.strip().lower()
+    intro_patterns = (
+        r"^(?:hi|hello|hey)[,\s!]*(?:my name is|i am|i'm|im|call me)\b",
+        r"^(?:my name is|i am|i'm|im|call me)\b",
+        r"^(?:hi|hello|hey)[,\s!]*(?:it's|it is)\s+[a-z][a-z\-' ]{0,40}$",
+        r"^(?:it's|it is)\s+[a-z][a-z\-' ]{0,40}$",
+    )
+    return any(re.search(pat, t) for pat in intro_patterns)
+
+
 def _extract_last_product_keyword(history: list[dict]) -> Optional[str]:
     """Scan backwards through history for the last catalog term mentioned."""
     return extract_last_catalog_mention(history)
@@ -351,7 +358,7 @@ def _had_recent_document_discussion(history: list[dict]) -> bool:
     """True when the session was recently discussing uploaded document topics."""
     for msg in reversed(history[-8:]):
         content = str(msg.get("content", "")).lower()
-        if msg.get("role") == "user" and _looks_like_document_request(content):
+        if msg.get("role") == "user" and _looks_like_document_request(content, history):
             return True
         if msg.get("role") == "assistant" and any(
             hint in content
@@ -366,25 +373,24 @@ def _looks_like_document_question(text: str) -> bool:
     return any(hint in text_lower for hint in _DOCUMENT_HINTS + _DOCUMENT_INTENT_PHRASES)
 
 
-def _looks_like_document_request(text: str) -> bool:
+def _looks_like_document_request(text: str, history: Optional[list[dict]] = None) -> bool:
     if _looks_like_name_recall(text):
         return False
 
     text_lower = text.lower().strip()
-    if any(hint in text_lower for hint in _DOCUMENT_HINTS + _DOCUMENT_INTENT_PHRASES):
+    if any(hint in text_lower for hint in _DOCUMENT_HINTS):
         return True
-    if text_lower.startswith(("tell me", "tell", "explain", "summarize")):
+    if get_collection().count() == 0:
+        return False
+    if _ORDER_ID_PATTERN.search(text):
+        return False
+    if _looks_like_product_request(text, history or []):
+        return False
+    if any(phrase in text_lower for phrase in _DOCUMENT_INTENT_PHRASES):
         return True
-    doc_topics = (
-        "company", "policy", "program", "warranty", "shipping", "return",
-        "loyalty", "support", "hours", "khadok", "document", "refund",
-    )
-    if re.search(r"\b(tell|about|explain|describe)\b", text_lower):
-        if any(topic in text_lower for topic in doc_topics):
-            return get_collection().count() > 0
-    if re.search(r"\bwhat\b", text_lower) and any(topic in text_lower for topic in doc_topics):
-        return get_collection().count() > 0
-    return False
+    if text_lower.startswith(("tell me", "tell", "explain", "summarize", "describe")):
+        return True
+    return _looks_like_question(text_lower)
 
 
 def _looks_like_knowledge_follow_up(text: str, history: list[dict]) -> bool:
@@ -916,7 +922,7 @@ def _route_request(history: list[dict], latest_message: str) -> tuple[str, Optio
         or _NAME_CALL_ME_PATTERN.search(latest_message)
         or _NAME_IT_IS_PATTERN.search(latest_message)
     )
-    if name_statement:
+    if name_statement and _looks_like_name_intro(latest_message):
         extracted_name = _extract_name(latest_message)
         if extracted_name:
             remaining = _strip_name_intro(latest_message, extracted_name)
@@ -925,10 +931,10 @@ def _route_request(history: list[dict], latest_message: str) -> tuple[str, Optio
             return "name_statement", {"name": extracted_name}
 
     if _looks_like_product_request(latest_message, history):
-        if not _looks_like_document_request(latest_message):
+        if not _looks_like_document_request(latest_message, history):
             return "tool_product", None
 
-    if _looks_like_document_request(latest_message) or _looks_like_knowledge_follow_up(text, history):
+    if _looks_like_document_request(latest_message, history) or _looks_like_knowledge_follow_up(text, history):
         return "knowledge", None
 
     if text.startswith(_GREETINGS) and len(text.split()) <= 4:
