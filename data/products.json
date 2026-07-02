@@ -14,6 +14,11 @@
   {"name": "Used Mechanical Keyboard", "price": 40, "stock": 2 },
   {"name": "Pre-owned Gaming Mouse", "price": 20, "stock": 5 },
   {"name": "Workstation Laptop", "price": 900, "stock": 1 },
-  {"name": "Ultra Gaming Laptop", "price": 2000, "stock": 0 }
-
+  {"name": "Ultra Gaming Laptop", "price": 2000, "stock": 0 },
+  {"name": "Refurbished USB-C Hub", "price": 25, "stock": 3 },
+  {"name": "Used Laptop Stand", "price": 30, "stock": 2 },
+  {"name": "Pre-owned 27-inch Monitor", "price": 180, "stock": 1 },
+  {"name": "Refurbished External Hard Drive", "price": 60, "stock": 4 },
+  {"name": "Used Webcam", "price": 40, "stock": 3 },
+  {"name": "Pre-owned Bluetooth Speaker", "price": 35, "stock": 2 }
 ]
