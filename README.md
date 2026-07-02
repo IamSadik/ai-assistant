@@ -30,7 +30,6 @@ A FastAPI-based assistant that combines document Q&A (RAG), session memory, and 
 
 ```bash
 git clone https://github.com/IamSadik/ai-assistant.git
-cd ai-assistant
 ```
 
 ### 2. Create a virtual environment
@@ -158,6 +157,9 @@ Examples:
 - *“Do you have a wireless mouse?”*
 - *“Show me some laptops and keyboards”*
 - *“Show some cheaper options”* (uses prior product context in the session)
+
+# Sample usage
+- See the [demo.png](data/demo.png) file.
 
 ## Architecture diagram
 
