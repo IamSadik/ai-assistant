@@ -164,3 +164,7 @@ Examples:
 ## Architecture diagram
 
 See [diagram.md](diagram.md).
+
+
+## Explanations
+See [explanation.md](explanation.md) for brief explanation of: ingestion pipeline, retrieval approach, memory implementation, tool-calling strategy, and prompt design
