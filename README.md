@@ -158,7 +158,7 @@ Examples:
 - *“Show me some laptops and keyboards”*
 - *“Show some cheaper options”* (uses prior product context in the session)
 
-# Sample usage
+## Sample usage
 - See the [demo.png](data/demo.png) file.
 
 ## Architecture diagram
