@@ -5,9 +5,8 @@ Embeds the user's query, searches ChromaDB for the top-k nearest chunks,
 and converts Chroma's cosine *distance* into a cosine *similarity* score
 (1 - distance) so thresholds read naturally (higher = more relevant).
 
-Follow-up questions ("what about the loyalty program?") are expanded with
-recent conversation context before embedding, so retrieval understands what
-the user is still talking about.
+Follow-up questions are expanded with recent conversation context before
+embedding, so retrieval understands what the user is still talking about.
 
 If the best match's similarity is below RETRIEVAL_SCORE_THRESHOLD, we treat
 the knowledge base as "not having the answer" -- this is what powers the

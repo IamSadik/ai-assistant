@@ -44,7 +44,7 @@ class Settings:
 
     @property
     def GEMINI_MODEL(self) -> str:
-        return _env("GEMINI_MODEL", "gemini-2.0-flash")
+        return _env("GEMINI_MODEL", "gemini-2.5-flash")
 
     @property
     def OLLAMA_BASE_URL(self) -> str:

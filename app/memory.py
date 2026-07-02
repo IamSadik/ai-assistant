@@ -6,18 +6,17 @@ current session."
 
 Design choice: an in-memory dict keyed by session_id, storing a rolling
 window of chat turns in the exact {"role": ..., "content": ...} shape the
-OpenAI API expects. This is intentionally simple:
+GEMINI API expects. This is intentionally simple:
 
 - No coreference-resolution logic is hand-written (e.g. figuring out that
   "cheaper options" refers to "laptops"). Instead, the full recent history
   is passed to the LLM on every call, and the LLM resolves references
-  naturally the same way it would in ChatGPT. This is the standard,
+  naturally the same way it would. This is the standard,
   robust approach -- hand-rolled pronoun resolution is brittle and
   unnecessary when you control the LLM call.
 - Storage is process-local memory, not a database or Redis. This satisfies
   "within the current session" exactly as specified. It does NOT persist
-  across server restarts -- documented as a known limitation in the README,
-  with a note on how you'd swap in Redis/Postgres for production.
+  across server restarts -- documented as a known limitation in the README.
 - Each session's history is capped at MEMORY_MAX_TURNS turns (a "turn" =
   one user message + one assistant reply) to bound token usage / cost.
 """

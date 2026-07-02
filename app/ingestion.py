@@ -17,7 +17,7 @@ Design choices (documented for the "brief explanation" deliverable):
   back to hard character splits.
 - Embeddings: sentence-transformers/all-MiniLM-L6-v2, run locally. Chosen
   over an OpenAI embedding API so the ingestion pipeline works with zero
-  API cost and zero network dependency on OpenAI specifically.
+  API cost and zero network dependency.
 - Storage: ChromaDB, persisted to disk (CHROMA_PERSIST_DIR). Chosen over
   FAISS because Chroma bundles metadata storage + persistence + a query
   API out of the box, which keeps this file short; FAISS would need a

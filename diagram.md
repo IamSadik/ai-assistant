@@ -1,6 +1,6 @@
 # Architecture / Pipeline Diagram
 
-This renders natively on GitHub (Mermaid support built in).
+Architecture for the AI-Assistant.
 
 ```mermaid
 flowchart TD

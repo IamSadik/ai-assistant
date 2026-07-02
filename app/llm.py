@@ -200,7 +200,7 @@ TOOL_SYSTEM_PROMPT = """You summarize the output of a mock tool (orders or produ
 
 Important: the product catalog and order lookup are standalone systems. They are
 NOT related to companies or topics from uploaded documents. Do not mention
-uploaded files, Khadok, or any knowledge-base content in your answer.
+uploaded files, or any knowledge-base content in your answer.
 
 Use only the provided tool result JSON. Be concise and factual.
 """
