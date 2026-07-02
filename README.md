@@ -52,9 +52,7 @@ source venv/bin/activate
 
 ### 3. Configure environment variables
 
-Copy the `.env` file provided in your email into the project root.
-
-You can also start from the included template:
+You can start from the included template:
 
 ```bash
 cp .env.example .env
