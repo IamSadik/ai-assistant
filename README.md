@@ -1,45 +1,72 @@
-# Mini AI Assistant
+# AI Assistant
 
-This repository implements the AI Developer take-home assignment as a small FastAPI assistant with document ingestion, vector retrieval, session memory, and mock tool calling.
+A FastAPI-based assistant that combines document Q&A (RAG), session memory, and mock tool calling for order lookup and product search. Upload PDF, TXT, or Markdown files, chat against the knowledge base, and query a separate product catalog or order system through the same interface.
 
-## What it does
+## Features
 
-- Upload PDF, TXT, or Markdown documents.
-- Chunk and embed the text into ChromaDB.
-- Chat against the uploaded knowledge base.
-- Keep per-session conversation memory in-process.
-- Call mock tools for order status and product lookup.
-- Switch between Gemini and Ollama for answer generation.
+- **Knowledge ingestion** — chunk, embed, and store documents in ChromaDB
+- **RAG chat** — answer questions from uploaded files with source citations
+- **Session memory** — remember context within a chat session (names, follow-up questions)
+- **Tool calling** — order status and product catalog lookups from JSON files
+- **Web UI** — simple browser interface at `/`
 
-## Project Structure
+## Project structure
 
-- `app/ingestion.py` loads documents, chunks text, embeds it, and stores vectors in ChromaDB.
-- `app/retrieval.py` embeds the user query and fetches the most relevant chunks.
-- `app/memory.py` stores session history in memory.
-- `app/tools.py` reads `data/orders.json` and `data/products.json`.
-- `app/llm.py` routes each request, calls tools if needed, and generates the final answer with Gemini or Ollama.
-- `app/main.py` exposes the FastAPI endpoints and serves the browser UI.
-- `static/index.html` contains the demo UI.
+| Path | Role |
+|------|------|
+| `app/ingestion.py` | Load, chunk, embed, and store documents |
+| `app/retrieval.py` | Vector search against ChromaDB (knowledge route only) |
+| `app/llm.py` | Message routing, tool execution, answer generation |
+| `app/memory.py` | Per-session conversation history |
+| `app/tools.py` | Order and product catalog tools |
+| `app/main.py` | FastAPI app and endpoints |
+| `static/index.html` | Browser UI |
+| `data/` | Sample `orders.json` and `products.json` |
+| `diagram.md` | Architecture diagram |
 
 ## Setup
 
-1. Create and activate the virtual environment.
-2. Install dependencies:
+### 1. Clone the repository
 
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/IamSadik/ai-assistant.git
+cd ai-assistant
 ```
 
-3. Configure `.env`.
+### 2. Create a virtual environment
 
-## Environment Variables
+```bash
+python -m venv venv
+```
 
-Use these values in `.env`:
+**Windows (PowerShell)**
+
+```bash
+.\venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux**
+
+```bash
+source venv/bin/activate
+```
+
+### 3. Configure environment variables
+
+Copy the `.env` file provided in your email into the project root.
+
+You can also start from the included template:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set your API key and any other values. The template mirrors the current project defaults:
 
 ```env
 LLM_PROVIDER=gemini
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-2.5-flash
 
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.1
@@ -49,61 +76,88 @@ CHROMA_PERSIST_DIR=./chroma_db
 CHUNK_SIZE=500
 CHUNK_OVERLAP=50
 RETRIEVAL_TOP_K=4
-RETRIEVAL_SCORE_THRESHOLD=0.3
-MEMORY_MAX_TURNS=10
+RETRIEVAL_SCORE_THRESHOLD=0.4
+MEMORY_MAX_TURNS=20
 LLM_TEMPERATURE=0.2
 ```
 
-### Provider switch
+Get a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) if you need one.
 
-- Set `LLM_PROVIDER=gemini` to use Gemini first. This is the default recommendation for a free hosted model.
-- Set `LLM_PROVIDER=ollama` to use a local Ollama model.
-- If the requested provider is unavailable, the app falls back to the other configured provider and then to deterministic replies.
-
-For Ollama, start the local server and pull a model first, for example:
+### 4. Install dependencies
 
 ```bash
-ollama pull llama3.1
-ollama serve
+pip install -r requirements.txt
 ```
 
-## Run the app
+### 5. Run the server
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Open the browser UI at `http://127.0.0.1:8000`.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 
-## API Endpoints
+## LLM provider
 
-- `GET /` - browser UI
-- `GET /health` - provider and knowledge-base status
-- `POST /ingest` - upload a document
-- `POST /chat` - send a chat message
-- `GET /history/{session_id}` - inspect session memory
-- `POST /reset/{session_id}` - clear a session
+The app uses **Gemini** by default (`LLM_PROVIDER=gemini`). Set `LLM_PROVIDER=ollama` to use a local [Ollama](https://ollama.com/) model instead. If the primary provider is unavailable, the app falls back to structured deterministic replies where possible.
+
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Chat UI |
+| `GET` | `/health` | Server, LLM, and knowledge-base status |
+| `POST` | `/ingest` | Upload a PDF, TXT, or MD document |
+| `POST` | `/chat` | Send a message (`session_id`, `message`) |
+| `GET` | `/history/{session_id}` | View session history |
+| `POST` | `/reset/{session_id}` | Clear a session |
+
+Interactive API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ## How the pipeline works
 
-1. A user uploads a document.
-2. The document is loaded, chunked, embedded, and stored in ChromaDB.
-3. A chat message arrives with a session ID.
-4. Conversation memory is loaded for that session.
-5. The request is routed to a tool, retrieval, or direct answer path.
-6. Tool results and retrieved context are grounded into the final response.
-7. The assistant reply is returned and appended back into memory.
+1. **Upload** — a document is saved to `uploads/`, chunked, embedded with `all-MiniLM-L6-v2`, and stored in ChromaDB (`chroma_db/`).
+2. **Chat** — each message loads session memory, then is **routed** before any embedding:
+   - **Order ID** (e.g. `ORD001`) → `orders.json` lookup
+   - **Catalog intent** → `products.json` search (independent of uploaded documents)
+   - **Document / policy question** → vector search in ChromaDB, then LLM answer
+   - **Name recall / greeting** → session memory only
+   - **Other** → direct LLM reply
+3. **Respond** — the reply is saved to session memory and returned with metadata (`used_tool`, `used_retrieval`, `sources`).
+
+See [diagram.md](diagram.md) for the full architecture diagram.
 
 ## Implementation notes
 
-- Retrieval only returns chunks above the similarity threshold, which keeps the assistant from answering from weak matches.
-- Session memory is process-local, which satisfies the assignment but does not survive a server restart.
-- The knowledge-base answer path returns the exact fallback sentence when no relevant content is found.
-- The product tool supports the example "cheaper options" memory behavior by looking back at earlier product mentions in the session.
+- **Routing before retrieval** — only knowledge-base questions trigger embedding and ChromaDB search. Tool calls and memory-based replies do not.
+- **Catalog detection** — product routing reads searchable terms from `products.json` at runtime, so new products do not require code changes.
+- **Catalog vs RAG** — product results come from `products.json` only; they are not mixed with uploaded document content.
+- **Retrieval threshold** — chunks below `RETRIEVAL_SCORE_THRESHOLD` are filtered out to reduce weak matches.
+- **Follow-up questions** — short messages are expanded with recent conversation context before search.
+- **Session memory** — stored in-process; it does not survive a server restart.
 
 ## Sample tools
 
-The repository already includes `data/orders.json` and `data/products.json` with sample tool data.
+### Order status (`data/orders.json`)
+
+| Order ID | Status | Est. delivery |
+|----------|--------|---------------|
+| ORD001 | Shipped | 2026-07-02 |
+| ORD002 | Processing | 2026-07-05 |
+| ORD003 | Delivered | 2026-06-28 |
+| ORD004 | Cancelled | — |
+
+Example: *“Where is my order ORD001?”*
+
+### Product search (`data/products.json`)
+
+The catalog includes mice, keyboards, laptops, monitors, hubs, webcams, speakers, and more. Prices and stock are read live from the JSON file.
+
+Examples:
+
+- *“Do you have a wireless mouse?”*
+- *“Show me some laptops and keyboards”*
+- *“Show some cheaper options”* (uses prior product context in the session)
 
 ## Architecture diagram
 

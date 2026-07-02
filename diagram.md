@@ -1,6 +1,6 @@
 # Architecture / Pipeline Diagram
 
-Architecture for the AI-Assistant.
+Architecture for the AI Assistant.
 
 ```mermaid
 flowchart TD
@@ -43,13 +43,8 @@ flowchart TD
 
     A6 -.queried only on knowledge route.-> R3
 
-    style R1 fill:#e8f4ea
-    style R2 fill:#e8f4ea
-    style R3 fill:#e8f4ea
-    style R4 fill:#e8f4ea
-    style T1 fill:#e8eef8
-    style T2 fill:#e8eef8
-    style M1 fill:#f5f0e8
+    classDef blackNode fill:#000000,stroke:#000000,color:#ffffff
+    class A1,A2,A3,A4,A5,A6,B1,B2,B3,T1,T2,M1,R1,R2,R3,R4,R5,L1,L2,D1,F1,F2,B4,B5 blackNode
 ```
 
 ## Key design points

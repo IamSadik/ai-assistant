@@ -1,43 +1,26 @@
 """
 Tool Calling
 ============
-Implements the two mock tools required by the spec:
+Implements mock tools backed by JSON files:
 
 1. get_order_status(order_id) -> reads data/orders.json
-2. search_product(name)       -> reads data/products.json with simple
-   category-aware matching so queries like "laptops" do not return
-   accessory products such as "Laptop Stand".
+2. search_product(name)       -> reads data/products.json
 
-Each tool has:
-- a plain Python function that does the actual lookup
-- an OpenAI "function calling" JSON schema describing it to the LLM
-
-The LLM decides *when* to call these based on the schema descriptions and
-the conversation; app/llm.py executes whichever one the LLM asks for.
-
-Data is loaded fresh on every call (files are tiny) so edits to the JSON
-files are picked up without restarting the server.
+Catalog routing vocabulary is derived from products.json at runtime so new
+products do not require code changes in the router.
 """
 import json
 import re
 from typing import Optional
+
 from app.config import settings
 
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
-_CATEGORY_ALIASES = {
-    "laptop": {"laptop", "laptops"},
-    "mouse": {"mouse", "mice"},
-    "keyboard": {"keyboard", "keyboards"},
-    "monitor": {"monitor", "monitors"},
-    "hub": {"hub", "hubs"},
-    "stand": {"stand", "stands"},
+_ACCESSORY_MARKERS = {
+    "stand", "sleeve", "bag", "case", "dock", "holder", "pad", "mat", "cover",
 }
-_ACCESSORY_ONLY_TERMS = {
-    "laptop": {"stand", "sleeve", "bag", "case", "dock", "holder"},
-    "mouse": {"pad", "mat"},
-    "keyboard": {"cover", "case"},
-}
+_CATEGORY_ALIASES: Optional[dict[str, set[str]]] = None
 
 
 def _load_json(path: str) -> list:
@@ -45,15 +28,125 @@ def _load_json(path: str) -> list:
         return json.load(f)
 
 
+def _load_products() -> list[dict]:
+    return _load_json(settings.PRODUCTS_FILE)
+
+
 def _tokenize(text: str) -> set[str]:
     return set(_TOKEN_PATTERN.findall(text.lower()))
+
+
+def _product_tokens(product_name: str) -> set[str]:
+    return _tokenize(product_name)
+
+
+def _get_category_aliases() -> dict[str, set[str]]:
+    """Build category aliases from product names in the catalog."""
+    global _CATEGORY_ALIASES
+    if _CATEGORY_ALIASES is not None:
+        return _CATEGORY_ALIASES
+
+    aliases: dict[str, set[str]] = {}
+    for product in _load_products():
+        for token in _product_tokens(product["name"]):
+            if len(token) < 3:
+                continue
+            root = token[:-1] if token.endswith("s") and len(token) > 4 else token
+            bucket = aliases.setdefault(root, set())
+            bucket.add(root)
+            bucket.add(token)
+            if not token.endswith("s"):
+                bucket.add(f"{token}s")
+            if token.endswith("s") and len(token) > 4:
+                bucket.add(token[:-1])
+
+    _CATEGORY_ALIASES = aliases
+    return aliases
+
+
+def _reset_category_aliases() -> None:
+    global _CATEGORY_ALIASES
+    _CATEGORY_ALIASES = None
+
+
+def get_catalog_search_phrases() -> list[str]:
+    """
+    Searchable phrases derived from the live product catalog (longest first).
+    Used by the router to detect product-related messages without hardcoding SKUs.
+    """
+    phrases: set[str] = set()
+    for product in _load_products():
+        name = product["name"].lower()
+        phrases.add(name)
+        for token in _tokenize(name):
+            if len(token) >= 3:
+                phrases.add(token)
+
+    for alias_set in _get_category_aliases().values():
+        phrases.update(alias_set)
+
+    return sorted(phrases, key=len, reverse=True)
+
+
+def text_mentions_catalog(text: str) -> bool:
+    lower = text.lower()
+    return any(phrase in lower for phrase in get_catalog_search_phrases())
+
+
+def extract_catalog_mentions(text: str) -> list[str]:
+    lower = text.lower()
+    return [phrase for phrase in get_catalog_search_phrases() if phrase in lower]
+
+
+def extract_last_catalog_mention(
+    history: list[dict], exclude_latest: Optional[str] = None
+) -> Optional[str]:
+    exclude = (exclude_latest or "").strip()
+    for msg in reversed(history):
+        if msg.get("role") != "user":
+            continue
+        content = str(msg.get("content", "")).strip()
+        if exclude and content == exclude:
+            continue
+        mentions = extract_catalog_mentions(content)
+        if mentions:
+            return mentions[0]
+    return None
+
+
+def extract_last_catalog_user_message(
+    history: list[dict], exclude_latest: Optional[str] = None
+) -> Optional[str]:
+    """Return the most recent user turn that mentioned a catalog product."""
+    exclude = (exclude_latest or "").strip()
+    for msg in reversed(history):
+        if msg.get("role") != "user":
+            continue
+        content = str(msg.get("content", "")).strip()
+        if exclude and content == exclude:
+            continue
+        if extract_catalog_mentions(content):
+            return content
+    return None
+
+
+def detect_catalog_categories(query: str) -> list[str]:
+    """Public wrapper: categories (laptop, keyboard, ...) mentioned in text."""
+    return _detect_categories(query)
+
+
+def _is_accessory_product(product_tokens: set[str], category: str) -> bool:
+    aliases = _get_category_aliases().get(category, set())
+    if not (product_tokens & aliases):
+        return False
+    return bool(product_tokens & _ACCESSORY_MARKERS)
 
 
 def _detect_categories(query: str) -> list[str]:
     """Return all product categories mentioned in the query (e.g. laptops + keyboards)."""
     query_tokens = _tokenize(query)
     categories: list[str] = []
-    for category, aliases in _CATEGORY_ALIASES.items():
+    for category, aliases in _get_category_aliases().items():
         if query_tokens & aliases:
             categories.append(category)
     return categories
@@ -67,17 +160,14 @@ def _detect_category(query: str) -> Optional[str]:
 def _matches_category(
     product: dict, category: str, query_tokens: set[str]
 ) -> bool:
-    product_name = product["name"]
-    product_tokens = _product_tokens(product_name)
-    aliases = _CATEGORY_ALIASES[category]
+    product_tokens = _product_tokens(product["name"])
+    aliases = _get_category_aliases().get(category, set())
     if not (product_tokens & aliases):
         return False
 
-    accessory_terms = _ACCESSORY_ONLY_TERMS.get(category, set())
     if (
-        accessory_terms
-        and (product_tokens & accessory_terms)
-        and not (query_tokens & accessory_terms)
+        _is_accessory_product(product_tokens, category)
+        and not (query_tokens & _ACCESSORY_MARKERS)
     ):
         return False
     return True
@@ -90,10 +180,6 @@ def _search_category(products: list[dict], category: str, query_tokens: set[str]
     ]
     matches.sort(key=lambda p: (p["price"], p["name"]))
     return matches
-
-
-def _product_tokens(product_name: str) -> set[str]:
-    return _tokenize(product_name)
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +218,8 @@ def search_product(name: str) -> dict:
     return products that match that category and we avoid accessory matches
     such as "Laptop Stand" when the user asked for laptops.
     """
-    products = _load_json(settings.PRODUCTS_FILE)
+    _reset_category_aliases()
+    products = _load_products()
     query = name.strip().lower()
     query_tokens = _tokenize(query)
     categories = _detect_categories(query)

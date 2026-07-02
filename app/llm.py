@@ -19,7 +19,15 @@ import time
 from typing import Optional
 
 from app.config import settings, validate_gemini_key
-from app.tools import get_order_status, search_product
+from app.tools import (
+    get_order_status,
+    search_product,
+    text_mentions_catalog,
+    extract_catalog_mentions,
+    extract_last_catalog_mention,
+    extract_last_catalog_user_message,
+    detect_catalog_categories,
+)
 from app.retrieval import retrieve_for_knowledge, format_context, build_retrieval_query
 from app.ingestion import get_collection
 
@@ -28,22 +36,7 @@ logger = logging.getLogger(__name__)
 _last_llm_error: Optional[str] = None
 
 _ORDER_ID_PATTERN = re.compile(r"\bORD\d+\b", re.IGNORECASE)
-_PRODUCT_KEYWORDS = [
-    "mouse",
-    "keyboard",
-    "laptop",
-    "monitor",
-    "hub",
-    "stand",
-    "product",
-    "price",
-    "stock",
-    "buy",
-    "available",
-    "have a",
-    "have any",
-]
-_CHEAPER_KEYWORDS = ["cheaper", "less expensive", "lower price", "budget option"]
+_CHEAPER_KEYWORDS = ["cheaper", "cheap", "less expensive", "lower price", "budget option"]
 _PRODUCT_INTENT_PHRASES = (
     "show me",
     "looking for",
@@ -51,7 +44,9 @@ _PRODUCT_INTENT_PHRASES = (
     "find",
     "do you have",
     "can i get",
+    "any",
 )
+_CATALOG_HINTS = ("price", "prices", "stock", "catalog", "in stock", "out of stock")
 _NAME_STATEMENT_PATTERN = re.compile(
     r"\bmy name is\s+(?P<name>[A-Za-z][A-Za-z\-' ]{0,60})",
     re.IGNORECASE,
@@ -214,16 +209,29 @@ def _looks_like_question(text: str) -> bool:
     return t.endswith("?") or t.startswith(_QUESTION_STARTERS)
 
 
+def _looks_like_product_request(text: str, history: list[dict]) -> bool:
+    """Detect catalog intent using live product data, not hardcoded SKUs."""
+    lower = text.lower().strip()
+    if any(kw in lower for kw in _CHEAPER_KEYWORDS):
+        return (
+            text_mentions_catalog(lower)
+            or extract_last_catalog_user_message(history, exclude_latest=text) is not None
+        )
+    if text_mentions_catalog(lower):
+        return True
+    if any(hint in lower for hint in _CATALOG_HINTS) and text_mentions_catalog(lower):
+        return True
+    if any(phrase in lower for phrase in _PRODUCT_INTENT_PHRASES):
+        return (
+            text_mentions_catalog(lower)
+            or extract_last_catalog_user_message(history, exclude_latest=text) is not None
+        )
+    return False
+
+
 def _extract_last_product_keyword(history: list[dict]) -> Optional[str]:
-    """Scan backwards through history for the last product-ish keyword mentioned."""
-    for msg in reversed(history):
-        if msg["role"] != "user":
-            continue
-        content_lower = msg["content"].lower()
-        for kw in ["laptop", "mouse", "keyboard", "monitor", "hub", "stand"]:
-            if kw in content_lower:
-                return kw
-    return None
+    """Scan backwards through history for the last catalog term mentioned."""
+    return extract_last_catalog_mention(history)
 
 
 def _find_users_name(history: list[dict]) -> Optional[str]:
@@ -415,27 +423,53 @@ def _build_prompt(system_prompt: str, history: list[dict], latest_message: str, 
     return "\n\n".join(sections)
 
 
-def _infer_product_query(history: list[dict], latest_message: str) -> str:
-    text = latest_message.lower().strip()
-    if any(kw in text for kw in _CHEAPER_KEYWORDS):
-        return _extract_last_product_keyword(history) or latest_message
-
-    specific_keywords = ["wireless mouse", "mouse", "keyboard", "laptop", "monitor", "hub", "stand"]
-    for keyword in specific_keywords:
-        if keyword in text:
-            return keyword
-
-    for phrase in _PRODUCT_INTENT_PHRASES:
-        if phrase in text:
-            tail = text.split(phrase, 1)[1].strip()
-            tail = re.sub(r"\b(some|any|a|an|please)\b", " ", tail, flags=re.IGNORECASE)
-            tail = re.sub(r"\s+", " ", tail).strip(" .,!?")
-            if tail:
-                if tail.endswith("s") and len(tail) > 3:
-                    tail = tail[:-1]
-                return tail
-
+def _resolve_product_search_query(history: list[dict], latest_message: str) -> str:
+    """Build the catalog search string; follow-ups like 'cheaper options' reuse prior context."""
+    lower = latest_message.lower().strip()
+    if any(kw in lower for kw in _CHEAPER_KEYWORDS):
+        prior = extract_last_catalog_user_message(history, exclude_latest=latest_message)
+        if prior:
+            return prior
+        mention = extract_last_catalog_mention(history, exclude_latest=latest_message)
+        if mention:
+            cats = detect_catalog_categories(mention)
+            if cats:
+                return cats[0]
+            return mention
     return latest_message
+
+
+def _product_category_label(
+    history: list[dict], latest_message: str, tool_result: dict
+) -> str:
+    """Human-readable category for product replies (never the full user sentence)."""
+    groups = tool_result.get("groups") or []
+    if len(groups) == 1:
+        return groups[0]["category"]
+
+    cats = detect_catalog_categories(latest_message)
+    if len(cats) == 1:
+        return cats[0]
+
+    if any(kw in latest_message.lower() for kw in _CHEAPER_KEYWORDS):
+        prior = extract_last_catalog_user_message(history, exclude_latest=latest_message)
+        if prior:
+            prior_cats = detect_catalog_categories(prior)
+            if prior_cats:
+                return prior_cats[-1]
+
+    mentions = extract_catalog_mentions(latest_message)
+    if mentions:
+        for mention in mentions:
+            cats = detect_catalog_categories(mention)
+            if len(cats) == 1:
+                return cats[0]
+
+    return "product"
+
+
+def _infer_product_query(history: list[dict], latest_message: str) -> str:
+    return _resolve_product_search_query(history, latest_message)
 
 
 def _sort_product_results(results: list[dict]) -> list[dict]:
@@ -750,11 +784,13 @@ def _format_product_search_reply(
 ) -> str:
     """Format catalog results without blending in RAG / document context."""
     if not tool_result.get("found"):
-        return FALLBACK_NOT_FOUND_MESSAGE
+        return tool_result.get(
+            "message", "No matching products were found in the catalog."
+        )
 
     if any(kw in latest_message.lower() for kw in _CHEAPER_KEYWORDS):
         results = _sort_product_results(tool_result.get("results", []))
-        category = _format_product_category(_infer_product_query(history, latest_message))
+        category = _product_category_label(history, latest_message, tool_result)
         cheapest = results[:2]
         cheap_lines = _product_result_lines(cheapest)
         return f"Here are some cheaper {category} options:\n" + "\n".join(cheap_lines)
@@ -772,8 +808,8 @@ def _format_product_search_reply(
 
     results = _sort_product_results(tool_result.get("results", []))
     lines = _product_result_lines(results)
-    category = _format_product_category(_infer_product_query(history, latest_message))
-    if category and category != latest_message.lower().strip():
+    category = _product_category_label(history, latest_message, tool_result)
+    if category != "product":
         return f"Here are some {category} options:\n" + "\n".join(lines)
 
     return "Here are the options I found:\n" + "\n".join(lines)
@@ -888,15 +924,12 @@ def _route_request(history: list[dict], latest_message: str) -> tuple[str, Optio
                 return "name_then_continue", {"name": extracted_name, "remaining": remaining}
             return "name_statement", {"name": extracted_name}
 
-    if any(keyword in text for keyword in _PRODUCT_KEYWORDS + _CHEAPER_KEYWORDS):
+    if _looks_like_product_request(latest_message, history):
         if not _looks_like_document_request(latest_message):
-            return "tool_product", {"name": _infer_product_query(history, latest_message)}
+            return "tool_product", None
 
     if _looks_like_document_request(latest_message) or _looks_like_knowledge_follow_up(text, history):
         return "knowledge", None
-
-    if any(phrase in text for phrase in _PRODUCT_INTENT_PHRASES):
-        return "tool_product", {"name": _infer_product_query(history, latest_message)}
 
     if text.startswith(_GREETINGS) and len(text.split()) <= 4:
         return "greeting", None
@@ -925,7 +958,8 @@ def generate_response(history: list[dict], latest_message: str) -> dict:
         reply = _tool_reply("get_order_status", tool_result, history, latest_message)
         used_tool = "get_order_status"
     elif route == "tool_product":
-        tool_result = search_product(latest_message)
+        query = _resolve_product_search_query(history, latest_message)
+        tool_result = search_product(query)
         reply = _tool_reply("search_product", tool_result, history, latest_message)
         used_tool = "search_product"
     elif route == "name_statement":
@@ -941,7 +975,8 @@ def generate_response(history: list[dict], latest_message: str) -> dict:
             reply2, degraded = _knowledge_reply(history, remaining, retrieved_chunks)
             llm_degraded = llm_degraded or degraded
         elif route2 == "tool_product":
-            tool_result = search_product(remaining)
+            query = _resolve_product_search_query(history, remaining)
+            tool_result = search_product(query)
             reply2 = _tool_reply("search_product", tool_result, history, remaining)
         elif route2 == "tool_order":
             tool_result = get_order_status(payload2.get("order_id", ""))
